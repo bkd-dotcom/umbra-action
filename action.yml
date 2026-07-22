@@ -26,6 +26,10 @@ inputs:
     description: "Version of umbra-core to install from PyPI (e.g. '0.1.0'). Blank installs the latest."
     required: false
     default: ""
+  require-sandbox:
+    description: "If 'true', code-executing checks (npm/pip install, go/cargo build) are refused unless a real filesystem/network sandbox is available (fail closed)."
+    required: false
+    default: "false"
   python-version:
     description: "Python version to run on."
     required: false
@@ -47,6 +51,21 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    - name: Enable filesystem/network sandbox (bubblewrap) on Linux
+      shell: bash
+      run: |
+        # Real check isolation (the 'sandboxed' enforcement tier) needs bubblewrap.
+        # Install it on Linux runners so required checks run fully sandboxed rather
+        # than degrading to host-restricted. Non-fatal if it can't be installed.
+        if [ "$(uname -s)" = "Linux" ] && ! command -v bwrap >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap || \
+              echo "::warning::Could not install bubblewrap; checks will run host-restricted."
+          fi
+        fi
+        command -v bwrap >/dev/null 2>&1 && echo "bubblewrap: available (sandboxed enforcement)" \
+          || echo "::warning::bubblewrap unavailable — required checks will be host-restricted."
+
     - name: Install umbra-core
       shell: bash
       env:
@@ -62,7 +81,7 @@ runs:
           pip install "umbra-core==$VER"
         else
           # Pin a hardened minimum by default (contains the security fixes).
-          pip install "umbra-core>=0.1.2"
+          pip install "umbra-core>=0.1.3"
         fi
 
     - name: Stage the PR change as a working-tree diff
@@ -98,6 +117,7 @@ runs:
         IN_MIN_AUTHORITY: ${{ inputs.min-authority }}
         UMBRA_ENABLE_CLAUDE_CODE: ${{ inputs.agent == 'claude-code' && 'true' || 'false' }}
         UMBRA_ENABLE_CODEX_CLI: ${{ inputs.agent == 'codex-cli' && 'true' || 'false' }}
+        UMBRA_REQUIRE_SANDBOX: ${{ inputs.require-sandbox == 'true' && 'true' || 'false' }}
       run: |
         set -euo pipefail
         # Validate untrusted inputs against fixed sets before use.
