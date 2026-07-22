@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a problem with the Umbra Admission action.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For **security vulnerabilities** do NOT use this form — see
+        [SECURITY.md](https://github.com/bkd-dotcom/umbra-action/security/policy).
+        Governance-logic bugs (contract, verifier, receipts) belong in
+        [umbra-core](https://github.com/bkd-dotcom/umbra-core/issues).
+  - type: input
+    id: version
+    attributes:
+      label: Action version
+      placeholder: "v1 or v0.1.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Expected vs actual. Include the workflow YAML and a link to the failing run/log if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow snippet
+      render: yaml
