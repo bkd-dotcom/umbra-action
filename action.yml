@@ -69,11 +69,10 @@ runs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null 2>&1 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1 || true
         fi
-        if command -v bwrap >/dev/null 2>&1 && \
-           bwrap --ro-bind /usr /usr --ro-bind /bin /bin --tmpfs /tmp --unshare-all --die-with-parent true 2>/dev/null; then
-          echo "bubblewrap: available and preflighted (sandboxed enforcement)"
+        if command -v bwrap >/dev/null 2>&1; then
+          echo "bubblewrap installed. Umbra will preflight it at check time and record the true tier (sandboxed if it initializes, else network-isolated/host-restricted)."
         else
-          echo "::notice::bubblewrap sandbox not available on this runner — required checks will use the strongest tier that preflights (network-isolated or host-restricted), recorded truthfully in the receipt."
+          echo "::notice::bubblewrap not installed on this runner — required checks will use the strongest tier that preflights, recorded truthfully in the receipt."
         fi
 
     - name: Install umbra-core
