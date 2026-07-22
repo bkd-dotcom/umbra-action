@@ -79,15 +79,20 @@ runs:
         set -e
         AGENT_ARG="--agent none"
         if [ -n "${{ inputs.agent }}" ]; then AGENT_ARG="--agent ${{ inputs.agent }}"; fi
+        # Write outputs OUTSIDE the repo working tree, so they never appear in the
+        # PR's own diff (which would otherwise be flagged as an out-of-scope change).
+        OUT="${RUNNER_TEMP:-/tmp}/umbra"
+        mkdir -p "$OUT"
+        echo "OUT=$OUT" >> "$GITHUB_ENV"
         umbra --json admit . \
           --mission "${{ inputs.mission }}" \
           --label "${GITHUB_REPOSITORY}" \
           $AGENT_ARG \
           --min-authority "${{ inputs.min-authority }}" \
-          --receipt-out umbra-receipt.json > umbra-report.json || echo "ADMIT_FAILED=1" >> "$GITHUB_ENV"
+          --receipt-out "$OUT/umbra-receipt.json" > "$OUT/umbra-report.json" || echo "ADMIT_FAILED=1" >> "$GITHUB_ENV"
 
-        LEVEL=$(python -c "import json;print(json.load(open('umbra-report.json'))['report']['authority_level'])" 2>/dev/null || echo 0)
-        HASH=$(python -c "import json;print(json.load(open('umbra-report.json'))['receipt']['canonical_hash'])" 2>/dev/null || echo "")
+        LEVEL=$(python -c "import json;print(json.load(open('$OUT/umbra-report.json'))['report']['authority_level'])" 2>/dev/null || echo 0)
+        HASH=$(python -c "import json;print(json.load(open('$OUT/umbra-report.json'))['receipt']['canonical_hash'])" 2>/dev/null || echo "")
         echo "authority_level=$LEVEL" >> "$GITHUB_OUTPUT"
         echo "receipt_hash=$HASH" >> "$GITHUB_OUTPUT"
 
@@ -97,8 +102,8 @@ runs:
       with:
         name: umbra-receipt
         path: |
-          umbra-receipt.json
-          umbra-report.json
+          ${{ env.OUT }}/umbra-receipt.json
+          ${{ env.OUT }}/umbra-report.json
         if-no-files-found: ignore
 
     - name: Comment the verdict on the PR
@@ -107,8 +112,10 @@ runs:
       with:
         script: |
           const fs = require('fs');
+          const path = require('path');
+          const out = process.env.OUT || '';
           let report = {};
-          try { report = JSON.parse(fs.readFileSync('umbra-report.json','utf8')).report; } catch (e) {}
+          try { report = JSON.parse(fs.readFileSync(path.join(out, 'umbra-report.json'),'utf8')).report; } catch (e) {}
           const r = report || {};
           const cr = r.contract_result || {};
           const tb = r.trust_boundary || {};
