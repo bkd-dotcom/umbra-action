@@ -1,5 +1,9 @@
 # Umbra Admission — GitHub Action
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Umbra%20Admission-purple?logo=github)](https://github.com/marketplace/actions/umbra-admission)
+[![Latest release](https://img.shields.io/github/v/release/bkd-dotcom/umbra-action?sort=semver)](https://github.com/bkd-dotcom/umbra-action/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Govern any coding agent's change to your repository, and attach a signed receipt.**
 
 Every pull request — no matter which agent opened it (Claude Code, Codex, Cursor,
