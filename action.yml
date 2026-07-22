@@ -58,37 +58,57 @@ runs:
 
     - name: Stage the PR change as a working-tree diff
       shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         # umbra evaluates the working-tree diff (git diff vs HEAD). For a PR we
         # soft-reset to the base commit but keep the PR's changes in the working
         # tree, so `git diff` shows exactly what the agent proposed against base.
+        # Fail closed if we can't reach the base — otherwise admission would see
+        # an empty diff and wave the PR through (a silent no-op gate).
         if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          git fetch --no-tags origin "$BASE_SHA" 2>/dev/null || true
-          git reset --soft "$BASE_SHA" 2>/dev/null && git restore --staged . 2>/dev/null || true
+          git fetch --no-tags origin "$BASE_SHA" || {
+            echo "::error::Cannot fetch base $BASE_SHA. Set 'fetch-depth: 0' on actions/checkout."; exit 1; }
+          git reset --soft "$BASE_SHA" && git restore --staged . || {
+            echo "::error::Cannot soft-reset to base $BASE_SHA."; exit 1; }
+          if [ -z "$(git diff --name-only)" ]; then
+            echo "::warning::Working-tree diff against base is empty; the PR appears to change no files."
+          fi
         fi
 
     - name: Run admission
       id: admit
       shell: bash
       env:
+        # Pass inputs via env — NEVER interpolate ${{ inputs.* }} into a bash body
+        # (that is the GitHub Actions script-injection sink; a PR title/branch
+        # plumbed into `mission` could otherwise execute arbitrary code).
         UMBRA_SIGNING_KEY: ${{ inputs.signing-key }}
+        IN_MISSION: ${{ inputs.mission }}
+        IN_AGENT: ${{ inputs.agent }}
+        IN_MIN_AUTHORITY: ${{ inputs.min-authority }}
         UMBRA_ENABLE_CLAUDE_CODE: ${{ inputs.agent == 'claude-code' && 'true' || 'false' }}
         UMBRA_ENABLE_CODEX_CLI: ${{ inputs.agent == 'codex-cli' && 'true' || 'false' }}
       run: |
-        set -e
-        AGENT_ARG="--agent none"
-        if [ -n "${{ inputs.agent }}" ]; then AGENT_ARG="--agent ${{ inputs.agent }}"; fi
-        # Write outputs OUTSIDE the repo working tree, so they never appear in the
-        # PR's own diff (which would otherwise be flagged as an out-of-scope change).
+        set -euo pipefail
+        # Validate untrusted inputs against fixed sets before use.
+        case "${IN_AGENT:-}" in
+          ""|none) AGENT_ARG="--agent none" ;;
+          codex-cli|claude-code) AGENT_ARG="--agent ${IN_AGENT}" ;;
+          *) echo "::error::Invalid agent '${IN_AGENT}' (expected codex-cli|claude-code)"; exit 1 ;;
+        esac
+        case "${IN_MIN_AUTHORITY:-1}" in
+          0|1|2) MIN="${IN_MIN_AUTHORITY}" ;;
+          *) echo "::error::Invalid min-authority '${IN_MIN_AUTHORITY}' (expected 0|1|2)"; exit 1 ;;
+        esac
         OUT="${RUNNER_TEMP:-/tmp}/umbra"
         mkdir -p "$OUT"
         echo "OUT=$OUT" >> "$GITHUB_ENV"
         umbra --json admit . \
-          --mission "${{ inputs.mission }}" \
+          --mission "$IN_MISSION" \
           --label "${GITHUB_REPOSITORY}" \
           $AGENT_ARG \
-          --min-authority "${{ inputs.min-authority }}" \
+          --min-authority "$MIN" \
           --receipt-out "$OUT/umbra-receipt.json" > "$OUT/umbra-report.json" || echo "ADMIT_FAILED=1" >> "$GITHUB_ENV"
 
         LEVEL=$(python -c "import json;print(json.load(open('$OUT/umbra-report.json'))['report']['authority_level'])" 2>/dev/null || echo 0)
@@ -141,9 +161,13 @@ runs:
     - name: Enforce the authority gate
       if: always()
       shell: bash
+      env:
+        LEVEL: ${{ steps.admit.outputs.authority_level }}
+        MIN: ${{ inputs.min-authority }}
       run: |
-        LEVEL="${{ steps.admit.outputs.authority_level }}"
-        MIN="${{ inputs.min-authority }}"
+        # Validate before the numeric comparison (defense against injected values).
+        case "${MIN:-1}" in 0|1|2) : ;; *) echo "::error::Invalid min-authority"; exit 1 ;; esac
+        case "${LEVEL:-0}" in 0|1|2) : ;; *) LEVEL=0 ;; esac
         echo "umbra: earned L$LEVEL, required >= L$MIN"
         if [ "${LEVEL:-0}" -lt "${MIN:-1}" ]; then
           echo "::error::Umbra: the change earned only L$LEVEL (required L$MIN). See the receipt artifact."
