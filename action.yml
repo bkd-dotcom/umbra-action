@@ -49,11 +49,20 @@ runs:
 
     - name: Install umbra-core
       shell: bash
+      env:
+        IN_UMBRA_VERSION: ${{ inputs.umbra-version }}
       run: |
-        if [ -n "${{ inputs.umbra-version }}" ]; then
-          pip install "umbra-core==${{ inputs.umbra-version }}"
+        set -euo pipefail
+        VER="${IN_UMBRA_VERSION:-}"
+        if [ -n "$VER" ]; then
+          # Validate: PEP 440-ish version, no shell metacharacters.
+          case "$VER" in
+            *[!0-9.a-zA-Z_-]*) echo "::error::Invalid umbra-version '$VER'"; exit 1 ;;
+          esac
+          pip install "umbra-core==$VER"
         else
-          pip install umbra-core
+          # Pin a hardened minimum by default (contains the security fixes).
+          pip install "umbra-core>=0.1.2"
         fi
 
     - name: Stage the PR change as a working-tree diff
