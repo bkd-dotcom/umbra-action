@@ -54,17 +54,27 @@ runs:
     - name: Enable filesystem/network sandbox (bubblewrap) on Linux
       shell: bash
       run: |
-        # Real check isolation (the 'sandboxed' enforcement tier) needs bubblewrap.
-        # Install it on Linux runners so required checks run fully sandboxed rather
-        # than degrading to host-restricted. Non-fatal if it can't be installed.
-        if [ "$(uname -s)" = "Linux" ] && ! command -v bwrap >/dev/null 2>&1; then
-          if command -v apt-get >/dev/null 2>&1; then
+        # Real check isolation (the 'sandboxed' enforcement tier) needs bubblewrap
+        # AND unprivileged user namespaces. Ubuntu 24.04 (GitHub runners) restricts
+        # unprivileged userns via AppArmor by default, which makes bwrap fail its
+        # preflight and Umbra honestly fall back to host-restricted. We install
+        # bwrap and relax the userns clamp so the sandbox can initialize. All
+        # non-fatal: if anything fails, Umbra records the true (lower) tier.
+        if [ "$(uname -s)" = "Linux" ]; then
+          if ! command -v bwrap >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap || \
-              echo "::warning::Could not install bubblewrap; checks will run host-restricted."
+              echo "::warning::Could not install bubblewrap."
           fi
+          # Allow unprivileged user namespaces (needed by bwrap on Ubuntu 23.10+).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null 2>&1 || true
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1 || true
         fi
-        command -v bwrap >/dev/null 2>&1 && echo "bubblewrap: available (sandboxed enforcement)" \
-          || echo "::warning::bubblewrap unavailable — required checks will be host-restricted."
+        if command -v bwrap >/dev/null 2>&1 && \
+           bwrap --ro-bind /usr /usr --ro-bind /bin /bin --tmpfs /tmp --unshare-all --die-with-parent true 2>/dev/null; then
+          echo "bubblewrap: available and preflighted (sandboxed enforcement)"
+        else
+          echo "::notice::bubblewrap sandbox not available on this runner — required checks will use the strongest tier that preflights (network-isolated or host-restricted), recorded truthfully in the receipt."
+        fi
 
     - name: Install umbra-core
       shell: bash
