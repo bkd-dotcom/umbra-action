@@ -51,7 +51,8 @@ default applies. See the [umbra-core docs](https://github.com/bkd-dotcom/umbra-c
 | `min-authority` | `1` | Fail unless the change earns at least this level (0/1/2). |
 | `agent` | `""` | Force `codex-cli` or `claude-code` to *re-run* the change. Blank governs the existing PR diff without invoking an agent. |
 | `signing-key` | `""` | Base64 Ed25519 key (32+ bytes) for stable receipts. Falls back to a dev key (honestly flagged). |
-| `umbra-version` | latest | Pin a specific `umbra-core` PyPI version. |
+| `require-sandbox` | `false` | Fail closed if code-executing checks (npm/pip install, go/cargo build) can't run in a real filesystem/network sandbox. |
+| `umbra-version` | latest | Pin a specific `umbra-core` PyPI version (blank installs the latest hardened release). |
 | `python-version` | `3.12` | Python to run on. |
 
 ## Outputs
@@ -65,7 +66,10 @@ default applies. See the [umbra-core docs](https://github.com/bkd-dotcom/umbra-c
 
 This action is a thin wrapper over the `umbra-core` PyPI package. It stages the
 PR's change as a working-tree diff, runs `umbra admit`, and enforces the earned
-authority. The governance logic, contract, verifier, and receipts all live in
+authority. On Linux runners it installs bubblewrap so required checks run under a
+real filesystem/network **sandbox** (the tier is recorded truthfully in every
+receipt; it falls back to a lower tier only if the sandbox can't initialize). The
+governance logic, contract, verifier, and receipts all live in
 [umbra-core](https://github.com/bkd-dotcom/umbra-core).
 
 ## License
