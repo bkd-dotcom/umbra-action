@@ -1,0 +1,7 @@
+# Code owners — automatically requested for review on matching paths.
+
+*               @bkd-dotcom
+
+# The action itself is the security-critical surface.
+/action.yml     @bkd-dotcom
+/SECURITY.md    @bkd-dotcom
