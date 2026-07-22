@@ -1,5 +1,5 @@
 name: "Umbra Admission"
-description: "Govern any coding agent's change with the Umbra admission pipeline and attach a signed receipt. Works for PRs opened by Claude Code, Codex, Cursor, Copilot, Devin, or a human."
+description: "Govern any coding agent's PR with an admission pipeline and a signed receipt. Never merges."
 author: "Binay Dalai"
 branding:
   icon: "shield"
